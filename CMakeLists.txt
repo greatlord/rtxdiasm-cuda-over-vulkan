@@ -148,7 +148,7 @@ if(WIN32)
   set(ACUDA_INCLUDE_DIR ${RTX_MODULES_DIR}/rtxdiasm_acuda/include CACHE PATH "Path to acuda public headers" FORCE)
   add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-nvapi ${CMAKE_BINARY_DIR}/rtxdiasm-nvapi EXCLUDE_FROM_ALL)
   # NVAPI submodule sets its own output dirs; align with workspace layout.
-  foreach(_nvapi_tgt IN ITEMS nvapi nvapi64_loader)
+  foreach(_nvapi_tgt IN ITEMS nvapi nvapi64_loader acuda_nvapi)
     if(TARGET ${_nvapi_tgt})
       set_target_properties(${_nvapi_tgt} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${RTXCOV_RUNTIME_DIR}
