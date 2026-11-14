@@ -42,10 +42,8 @@ if(NOT DEFINED RTXDIASM_PTX_TO_SPIRV_DIR)
 endif()
 
 # --- Modules ---
-# PTX->SPIR-V compiler (can also be brought in by acuda module, but add explicitly for clarity)
-add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-ptx-to-spirv ${CMAKE_BINARY_DIR}/rtxdiasm-ptx-to-spirv EXCLUDE_FROM_ALL)
-
 # ACuda driver + runtime (libcuda.so.1 / nvcuda.dll, acuda_runtime)
+# (brings in PTX->SPIR-V compiler dependency from sibling module as needed)
 add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm_acuda ${CMAKE_BINARY_DIR}/rtxdiasm_acuda EXCLUDE_FROM_ALL)
 
 # CUDA Runtime API (cudart)
@@ -183,13 +181,15 @@ else()
     target_compile_options(${t} PRIVATE ${ACUDA_WARNINGS})
     if(t STREQUAL "test_windows_smoke")
       target_compile_definitions(${t} PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+    endif()
+    add_test(NAME ${t} COMMAND ${t})
+    if(t STREQUAL "test_windows_smoke")
       set_tests_properties(${t} PROPERTIES TIMEOUT 180)
     elseif(t STREQUAL "test_calchash_hang")
       set_tests_properties(${t} PROPERTIES TIMEOUT 300)
     else()
       set_tests_properties(${t} PROPERTIES TIMEOUT 600)
     endif()
-    add_test(NAME ${t} COMMAND ${t})
   endforeach()
 
   add_executable(test_cudart ${ACUDA_TESTS_DIR}/integration/test_cudart.c)
