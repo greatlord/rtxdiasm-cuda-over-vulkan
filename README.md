@@ -17,6 +17,10 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+Build outputs are placed in `bin/<config>/<platform-arch>/`, for example:
+- `bin/release/win-x64`, `bin/debug/win-x86`
+- `bin/release/linux-x64`
+
 Notes:
 - Requires Vulkan and a C toolchain (MSVC on Windows, GCC/Clang on Linux).
 - `rtxdiasm-nvapi` is added/built on Windows only.
