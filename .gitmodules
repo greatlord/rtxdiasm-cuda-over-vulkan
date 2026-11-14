@@ -16,3 +16,6 @@
 [submodule "rtxdiasm-modules/rtxdiasm-fatbin-parse"]
 	path = rtxdiasm-modules/rtxdiasm-fatbin-parse
 	url = https://github.com/greatlord/rtxdiasm-fatbin-parse.git
+[submodule "rtxdiasm-modules/rtxdiasm-runtime"]
+	path = rtxdiasm-modules/rtxdiasm-runtime
+	url = https://github.com/greatlord/rtxdiasm-runtime.git
