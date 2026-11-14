@@ -1,0 +1,212 @@
+cmake_minimum_required(VERSION 3.21)
+project(rtxdiasm_cuda_over_vulkan LANGUAGES C)
+
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Build type is recommended for single-config generators.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+# Output layout: bin/<config>[/<arch>]
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(RTXCOV_OUTPUT_DIR ${PROJECT_SOURCE_DIR}/bin/debug)
+else()
+  set(RTXCOV_OUTPUT_DIR ${PROJECT_SOURCE_DIR}/bin/release)
+endif()
+if(NOT WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+  set(RTXCOV_OUTPUT_DIR ${RTXCOV_OUTPUT_DIR}/x86)
+endif()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${RTXCOV_OUTPUT_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${RTXCOV_OUTPUT_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${RTXCOV_OUTPUT_DIR})
+
+if(MSVC)
+  set(ACUDA_WARNINGS /W3)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+else()
+  set(ACUDA_WARNINGS -Wall -Wextra -Werror)
+endif()
+
+find_package(Vulkan REQUIRED)
+
+# Paths
+set(RTX_MODULES_DIR ${PROJECT_SOURCE_DIR}/rtxdiasm-modules)
+set(RTX_TESTS_ROOT  ${PROJECT_SOURCE_DIR}/rtxdiasm-tests/rtxdiasm_tests)
+set(ACUDA_TESTS_DIR ${RTX_TESTS_ROOT}/tests/acuda)
+
+# Compiler module path (used by acuda module/tests)
+if(NOT DEFINED RTXDIASM_PTX_TO_SPIRV_DIR)
+  set(RTXDIASM_PTX_TO_SPIRV_DIR ${RTX_MODULES_DIR}/rtxdiasm-ptx-to-spirv)
+endif()
+
+# --- Modules ---
+# PTX->SPIR-V compiler (can also be brought in by acuda module, but add explicitly for clarity)
+add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-ptx-to-spirv ${CMAKE_BINARY_DIR}/rtxdiasm-ptx-to-spirv EXCLUDE_FROM_ALL)
+
+# ACuda driver + runtime (libcuda.so.1 / nvcuda.dll, acuda_runtime)
+add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm_acuda ${CMAKE_BINARY_DIR}/rtxdiasm_acuda EXCLUDE_FROM_ALL)
+
+# CUDA Runtime API (cudart)
+if(DEFINED ACUDA_DRIVER_TRACE_SOURCE AND NOT "${ACUDA_DRIVER_TRACE_SOURCE}" STREQUAL "")
+  set(ACUDA_TRACE_SOURCE "${ACUDA_DRIVER_TRACE_SOURCE}")
+else()
+  set(ACUDA_TRACE_SOURCE "")
+endif()
+add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-cudart ${CMAKE_BINARY_DIR}/rtxdiasm-cudart EXCLUDE_FROM_ALL)
+if(NOT TARGET acuda_cudart AND TARGET rtxcudart)
+  add_library(acuda_cudart ALIAS rtxcudart)
+endif()
+
+# NVAPI (Windows-only)
+if(WIN32)
+  # Point nvapi at acuda driver headers/target in this layout.
+  set(ACUDA_ROOT ${RTX_MODULES_DIR}/rtxdiasm_acuda CACHE PATH "Path to acuda module root" FORCE)
+  set(ACUDA_INCLUDE_DIR ${RTX_MODULES_DIR}/rtxdiasm_acuda/include CACHE PATH "Path to acuda public headers" FORCE)
+  add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-nvapi ${CMAKE_BINARY_DIR}/rtxdiasm-nvapi EXCLUDE_FROM_ALL)
+endif()
+
+# Windows multi-config output dirs for key DLLs/tests
+if(WIN32)
+  if(CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
+    set(RTXCOV_WIN_ARCH x86)
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+    set(RTXCOV_WIN_ARCH arm64)
+  else()
+    set(RTXCOV_WIN_ARCH x64)
+  endif()
+  foreach(config DEBUG RELEASE)
+    string(TOLOWER "${config}" config_dir)
+    foreach(tgt acuda_driver rtxcudart)
+      if(TARGET ${tgt})
+        set_target_properties(${tgt} PROPERTIES
+          RUNTIME_OUTPUT_DIRECTORY_${config} "${PROJECT_SOURCE_DIR}/bin/${config_dir}/${RTXCOV_WIN_ARCH}"
+          ARCHIVE_OUTPUT_DIRECTORY_${config} "${PROJECT_SOURCE_DIR}/bin/${config_dir}/${RTXCOV_WIN_ARCH}"
+          LIBRARY_OUTPUT_DIRECTORY_${config} "${PROJECT_SOURCE_DIR}/bin/${config_dir}/${RTXCOV_WIN_ARCH}")
+      endif()
+    endforeach()
+  endforeach()
+endif()
+
+# --- ACuda tests (from rtxdiasm_tests module) ---
+include(CTest)
+
+function(rtxcov_add_test name source)
+  add_executable(${name} ${source})
+  target_link_libraries(${name} PRIVATE acuda_runtime)
+  target_compile_options(${name} PRIVATE ${ACUDA_WARNINGS})
+  add_test(NAME ${name} COMMAND ${name})
+  set_tests_properties(${name} PROPERTIES TIMEOUT 120)
+endfunction()
+
+if(NOT WIN32)
+  rtxcov_add_test(test_status ${ACUDA_TESTS_DIR}/unit/test_status.c)
+  rtxcov_add_test(test_memory ${ACUDA_TESTS_DIR}/integration/test_memory.c)
+  rtxcov_add_test(test_stream_event ${ACUDA_TESTS_DIR}/integration/test_stream_event.c)
+  rtxcov_add_test(test_ptx ${ACUDA_TESTS_DIR}/integration/test_ptx.c)
+  target_compile_definitions(test_ptx PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+  target_include_directories(test_ptx PRIVATE
+    ${RTXDIASM_PTX_TO_SPIRV_DIR}/src
+    ${RTXDIASM_PTX_TO_SPIRV_DIR}/src/include)
+  if(UNIX)
+    target_link_options(test_ptx PRIVATE -Wl,-z,stack-size=8388608)
+  endif()
+
+  rtxcov_add_test(test_driver ${ACUDA_TESTS_DIR}/integration/test_driver.c)
+  target_link_libraries(test_driver PRIVATE dl)
+  target_compile_definitions(test_driver PRIVATE
+    ACUDA_DRIVER_PATH="$<TARGET_FILE:acuda_driver>"
+    ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+
+  rtxcov_add_test(test_texture_driver ${ACUDA_TESTS_DIR}/integration/test_texture_driver.c)
+  target_link_libraries(test_texture_driver PRIVATE acuda_driver)
+  target_compile_definitions(test_texture_driver PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+
+  rtxcov_add_test(test_cudart ${ACUDA_TESTS_DIR}/integration/test_cudart.c)
+  target_link_libraries(test_cudart PRIVATE acuda_cudart)
+  target_compile_definitions(test_cudart PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+
+  rtxcov_add_test(test_hostcall ${ACUDA_TESTS_DIR}/integration/test_hostcall.c)
+  target_compile_definitions(test_hostcall PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+  target_include_directories(test_hostcall PRIVATE ${RTX_MODULES_DIR}/rtxdiasm_acuda/src/runtime)
+
+  rtxcov_add_test(test_ptx_kit ${ACUDA_TESTS_DIR}/integration/test_ptx_kit.c)
+  target_compile_definitions(test_ptx_kit PRIVATE ACUDA_TEST_KIT_DIR="${ACUDA_TESTS_DIR}/windows-kit")
+  add_test(NAME test_ptx_success_kit COMMAND test_ptx_kit "${ACUDA_TESTS_DIR}/windows-test-kit/ptx_to_spv_success/cases")
+  set_tests_properties(test_ptx_success_kit PROPERTIES TIMEOUT 120)
+  add_test(NAME test_ptx_error_kit COMMAND test_ptx_kit "${ACUDA_TESTS_DIR}/windows-test-kit/ptx_to_spv_error")
+  set_tests_properties(test_ptx_error_kit PROPERTIES TIMEOUT 120)
+
+  add_executable(bench_math ${ACUDA_TESTS_DIR}/bench/bench_math.c)
+  target_link_libraries(bench_math PRIVATE acuda_runtime)
+  target_compile_options(bench_math PRIVATE ${ACUDA_WARNINGS})
+  add_executable(bench_gemm ${ACUDA_TESTS_DIR}/bench/bench_gemm.c)
+  target_link_libraries(bench_gemm PRIVATE acuda_runtime)
+  target_compile_options(bench_gemm PRIVATE ${ACUDA_WARNINGS})
+  add_executable(bench_dp4a ${ACUDA_TESTS_DIR}/bench/bench_dp4a.c)
+  target_link_libraries(bench_dp4a PRIVATE acuda_runtime)
+  target_compile_options(bench_dp4a PRIVATE ${ACUDA_WARNINGS})
+  target_compile_definitions(bench_dp4a PRIVATE ACUDA_BENCH_PTX_DIR="${ACUDA_TESTS_DIR}/bench")
+  add_executable(bench_atomic ${ACUDA_TESTS_DIR}/bench/bench_atomic.c)
+  target_link_libraries(bench_atomic PRIVATE acuda_runtime)
+  target_compile_options(bench_atomic PRIVATE ${ACUDA_WARNINGS})
+else()
+  # Windows test subset (portable/runtime API + driver/cudart smoke tests)
+  foreach(name IN ITEMS test_status test_memory test_stream_event)
+    if(name STREQUAL "test_status")
+      set(source ${ACUDA_TESTS_DIR}/unit/test_status.c)
+    else()
+      set(source ${ACUDA_TESTS_DIR}/integration/${name}.c)
+    endif()
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE acuda_runtime)
+    target_compile_options(${name} PRIVATE ${ACUDA_WARNINGS})
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES TIMEOUT 180)
+  endforeach()
+
+  add_executable(test_ptx ${ACUDA_TESTS_DIR}/integration/test_ptx.c)
+  target_link_libraries(test_ptx PRIVATE acuda_runtime)
+  target_include_directories(test_ptx PRIVATE ${RTXDIASM_PTX_TO_SPIRV_DIR}/src ${RTXDIASM_PTX_TO_SPIRV_DIR}/src/include)
+  target_compile_options(test_ptx PRIVATE ${ACUDA_WARNINGS})
+  target_compile_definitions(test_ptx PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+  if(MSVC)
+    target_link_options(test_ptx PRIVATE /STACK:8388608)
+  endif()
+  add_test(NAME test_ptx COMMAND test_ptx)
+  set_tests_properties(test_ptx PROPERTIES TIMEOUT 600)
+
+  foreach(t IN ITEMS test_windows_smoke test_multi_device test_calchash_hang)
+    add_executable(${t} ${ACUDA_TESTS_DIR}/integration/${t}.c)
+    target_link_libraries(${t} PRIVATE acuda_driver)
+    target_compile_options(${t} PRIVATE ${ACUDA_WARNINGS})
+    if(t STREQUAL "test_windows_smoke")
+      target_compile_definitions(${t} PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+      set_tests_properties(${t} PROPERTIES TIMEOUT 180)
+    elseif(t STREQUAL "test_calchash_hang")
+      set_tests_properties(${t} PROPERTIES TIMEOUT 300)
+    else()
+      set_tests_properties(${t} PROPERTIES TIMEOUT 600)
+    endif()
+    add_test(NAME ${t} COMMAND ${t})
+  endforeach()
+
+  add_executable(test_cudart ${ACUDA_TESTS_DIR}/integration/test_cudart.c)
+  target_link_libraries(test_cudart PRIVATE acuda_cudart)
+  target_compile_options(test_cudart PRIVATE ${ACUDA_WARNINGS})
+  target_compile_definitions(test_cudart PRIVATE ACUDA_TEST_PTX_DIR="${ACUDA_TESTS_DIR}/ptx")
+  add_test(NAME test_cudart COMMAND test_cudart)
+  set_tests_properties(test_cudart PROPERTIES TIMEOUT 300)
+
+  # Place Windows tests next to DLLs for loader resolution.
+  foreach(config DEBUG RELEASE)
+    string(TOLOWER "${config}" config_dir)
+    foreach(tgt IN ITEMS test_status test_memory test_stream_event test_ptx test_windows_smoke test_multi_device test_calchash_hang test_cudart)
+      if(TARGET ${tgt})
+        set_target_properties(${tgt} PROPERTIES
+          RUNTIME_OUTPUT_DIRECTORY_${config} "${PROJECT_SOURCE_DIR}/bin/${config_dir}/${RTXCOV_WIN_ARCH}")
+      endif()
+    endforeach()
+  endforeach()
+endif()

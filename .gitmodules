@@ -1,0 +1,15 @@
+[submodule "rtxdiasm-modules/rtxdiasm-nvapi"]
+	path = rtxdiasm-modules/rtxdiasm-nvapi
+	url = https://github.com/greatlord/rtxdiasm-nvapi.git
+[submodule "rtxdiasm-modules/rtxdiasm-cudart"]
+	path = rtxdiasm-modules/rtxdiasm-cudart
+	url = https://github.com/greatlord/rtxdiasm-cudart.git
+[submodule "rtxdiasm-modules/rtxdiasm_acuda"]
+	path = rtxdiasm-modules/rtxdiasm_acuda
+	url = https://github.com/greatlord/rtxdiasm_acuda.git
+[submodule "rtxdiasm-modules/rtxdiasm-ptx-to-spirv"]
+	path = rtxdiasm-modules/rtxdiasm-ptx-to-spirv
+	url = https://github.com/greatlord/rtxdiasm_ptx-to-spirv_compiler.git
+[submodule "rtxdiasm-tests/rtxdiasm_tests"]
+	path = rtxdiasm-tests/rtxdiasm_tests
+	url = https://github.com/greatlord/rtxdiasm_tests.git
