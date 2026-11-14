@@ -177,6 +177,76 @@ endif()
 
 # Output directories are set globally above (bin/<config>/<platform-arch>).
 
+# --- rtxdiasm-runtime (C# lift backend: rtxdisam_native/host/cli + isa_json) ---
+# Built/published via dotnet + CMake (host) so ACuda's rtxdisam bridge can find it
+# alongside other runtime binaries in bin/<config>/<platform>/bin.
+set(RTXDIASM_RUNTIME_DIR ${RTX_MODULES_DIR}/rtxdiasm-runtime)
+if(EXISTS "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj")
+  find_program(DOTNET_EXECUTABLE dotnet)
+  if(DOTNET_EXECUTABLE)
+    # Map platform/arch to .NET RID
+    if(WIN32)
+      if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(RTXDIASM_RUNTIME_RID win-x86)
+      else()
+        set(RTXDIASM_RUNTIME_RID win-x64)
+      endif()
+    elseif(APPLE)
+      if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+        set(RTXDIASM_RUNTIME_RID osx-arm64)
+      else()
+        set(RTXDIASM_RUNTIME_RID osx-x64)
+      endif()
+    else()
+      if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+        set(RTXDIASM_RUNTIME_RID linux-arm64)
+      elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(RTXDIASM_RUNTIME_RID linux-x86)
+      else()
+        set(RTXDIASM_RUNTIME_RID linux-x64)
+      endif()
+    endif()
+
+    set(RTXDIASM_RUNTIME_ARTIFACTS ${RTXDIASM_RUNTIME_DIR}/artifacts/${RTXDIASM_RUNTIME_RID})
+    set(RTXDIASM_RUNTIME_HOST_BUILD ${CMAKE_BINARY_DIR}/rtxdiasm-runtime-host)
+
+    # Host exe path differs for multi-config (MSVC) vs single-config generators.
+    if(CMAKE_CONFIGURATION_TYPES OR MSVC)
+      set(_rtxrt_host_exe "${RTXDIASM_RUNTIME_HOST_BUILD}/Release/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}")
+    else()
+      set(_rtxrt_host_exe "${RTXDIASM_RUNTIME_HOST_BUILD}/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}")
+    endif()
+
+    set(_rtxrt_stamp ${CMAKE_BINARY_DIR}/rtxdiasm-runtime.stamp)
+    # Build/publish Release artifacts once and copy into release+debug output bin dirs.
+    add_custom_command(
+      OUTPUT ${_rtxrt_stamp}
+      COMMAND ${CMAKE_COMMAND} -E echo "Building rtxdiasm-runtime (${RTXDIASM_RUNTIME_RID})"
+      COMMAND ${DOTNET_EXECUTABLE} publish "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj" -c Release -r ${RTXDIASM_RUNTIME_RID} -o "${RTXDIASM_RUNTIME_ARTIFACTS}/native"
+      COMMAND ${DOTNET_EXECUTABLE} publish "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.cli/rtxdisam.cli.csproj" -c Release -r ${RTXDIASM_RUNTIME_RID} -o "${RTXDIASM_RUNTIME_ARTIFACTS}/cli"
+      COMMAND ${CMAKE_COMMAND} -S "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.host" -B "${RTXDIASM_RUNTIME_HOST_BUILD}" -DCMAKE_BUILD_TYPE=Release
+      COMMAND ${CMAKE_COMMAND} --build "${RTXDIASM_RUNTIME_HOST_BUILD}" --config Release
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/cli" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/cli" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_DIR}/isa_json" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/isa_json"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_DIR}/isa_json" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/isa_json"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_rtxrt_host_exe}" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_rtxrt_host_exe}" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}"
+      COMMAND ${CMAKE_COMMAND} -E touch ${_rtxrt_stamp}
+      WORKING_DIRECTORY "${RTXDIASM_RUNTIME_DIR}"
+      VERBATIM
+    )
+    unset(_rtxrt_host_exe)
+    add_custom_target(rtxdiasm_runtime ALL DEPENDS ${_rtxrt_stamp})
+    unset(_rtxrt_stamp)
+  else()
+    message(STATUS "dotnet not found; skipping rtxdiasm-runtime build (rtxdisam lift backend)")
+  endif()
+endif()
+
 # --- ACuda tests (from rtxdiasm_tests module) ---
 include(CTest)
 
