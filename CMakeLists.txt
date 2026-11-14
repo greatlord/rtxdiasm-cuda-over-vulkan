@@ -210,20 +210,40 @@ if(EXISTS "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj")
     set(RTXDIASM_RUNTIME_ARTIFACTS ${RTXDIASM_RUNTIME_DIR}/artifacts/${RTXDIASM_RUNTIME_RID})
     set(RTXDIASM_RUNTIME_HOST_BUILD ${CMAKE_BINARY_DIR}/rtxdiasm-runtime-host)
 
+    # NativeAOT (rtxdisam.native) is not supported for win-x86; publish/copy it only
+    # where supported. CLI and isa_json are still needed for the lift backend on Win32.
+    set(_rtxrt_publish_native TRUE)
+    if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+      set(_rtxrt_publish_native FALSE)
+    endif()
+
     set(_rtxrt_stamp ${CMAKE_BINARY_DIR}/rtxdiasm-runtime.stamp)
     # Build/publish Release artifacts once and copy into release+debug output bin dirs.
     set(_rtxrt_cmds
       COMMAND ${CMAKE_COMMAND} -E echo "Building rtxdiasm-runtime (${RTXDIASM_RUNTIME_RID})"
-      COMMAND ${DOTNET_EXECUTABLE} publish "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj" -c Release -r ${RTXDIASM_RUNTIME_RID} -o "${RTXDIASM_RUNTIME_ARTIFACTS}/native"
+    )
+    if(_rtxrt_publish_native)
+      list(APPEND _rtxrt_cmds
+        COMMAND ${DOTNET_EXECUTABLE} publish "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj" -c Release -r ${RTXDIASM_RUNTIME_RID} -o "${RTXDIASM_RUNTIME_ARTIFACTS}/native"
+      )
+    endif()
+    list(APPEND _rtxrt_cmds
       COMMAND ${DOTNET_EXECUTABLE} publish "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.cli/rtxdisam.cli.csproj" -c Release -r ${RTXDIASM_RUNTIME_RID} -o "${RTXDIASM_RUNTIME_ARTIFACTS}/cli"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
-      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin"
-      COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
+    )
+    if(_rtxrt_publish_native)
+      list(APPEND _rtxrt_cmds
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/native" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
+      )
+    endif()
+    list(APPEND _rtxrt_cmds
       COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/cli" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin"
       COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_ARTIFACTS}/cli" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin"
       COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_DIR}/isa_json" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/isa_json"
       COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_DIR}/isa_json" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/isa_json"
     )
+    unset(_rtxrt_publish_native)
     if(WIN32)
       # rtxdisam_host is currently Windows-specific (Win32 API). Build/copy on Windows only.
       set(RTXDIASM_RUNTIME_HOST_BUILD ${CMAKE_BINARY_DIR}/rtxdiasm-runtime-host)
