@@ -92,6 +92,9 @@ if(NOT DEFINED RTXDIASM_PTX_TO_SPIRV_DIR)
 endif()
 
 # --- Modules ---
+# Shared fatbin PTX parse/extract (lz4+zstd)
+add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm-fatbin-parse ${CMAKE_BINARY_DIR}/rtxdiasm-fatbin-parse EXCLUDE_FROM_ALL)
+
 # ACuda driver + runtime (libcuda.so.1 / nvcuda.dll, acuda_runtime)
 # (brings in PTX->SPIR-V compiler dependency from sibling module as needed)
 add_subdirectory(${RTX_MODULES_DIR}/rtxdiasm_acuda ${CMAKE_BINARY_DIR}/rtxdiasm_acuda EXCLUDE_FROM_ALL)

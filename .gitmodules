@@ -13,3 +13,6 @@
 [submodule "rtxdiasm-tests/rtxdiasm_tests"]
 	path = rtxdiasm-tests/rtxdiasm_tests
 	url = https://github.com/greatlord/rtxdiasm_tests.git
+[submodule "rtxdiasm-modules/rtxdiasm-fatbin-parse"]
+	path = rtxdiasm-modules/rtxdiasm-fatbin-parse
+	url = https://github.com/greatlord/rtxdiasm-fatbin-parse.git
