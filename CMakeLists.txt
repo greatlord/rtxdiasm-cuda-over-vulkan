@@ -235,6 +235,15 @@ if(EXISTS "${RTXDIASM_RUNTIME_DIR}/src/rtxdisam.native/rtxdisam.native.csproj")
       COMMAND ${CMAKE_COMMAND} -E copy_directory "${RTXDIASM_RUNTIME_DIR}/isa_json" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/isa_json"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_rtxrt_host_exe}" "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_rtxrt_host_exe}" "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam_host${CMAKE_EXECUTABLE_SUFFIX}"
+      COMMAND ${CMAKE_COMMAND} -E rm -f
+        "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam.core.pdb"
+        "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam.pdb"
+        "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam_native.pdb"
+        "${RTXCOV_OUTPUT_ROOT_RELEASE}/bin/rtxdisam_native.exp"
+        "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam.core.pdb"
+        "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam.pdb"
+        "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam_native.pdb"
+        "${RTXCOV_OUTPUT_ROOT_DEBUG}/bin/rtxdisam_native.exp"
       COMMAND ${CMAKE_COMMAND} -E touch ${_rtxrt_stamp}
       WORKING_DIRECTORY "${RTXDIASM_RUNTIME_DIR}"
       VERBATIM
