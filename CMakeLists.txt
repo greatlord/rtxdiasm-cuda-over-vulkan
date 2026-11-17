@@ -110,6 +110,17 @@ else()
   set(ACUDA_WARNINGS -Wall -Wextra -Werror)
 endif()
 
+# Vulkan SDK: prefer explicit CMake/Vulkan variables, then VULKAN_SDK env var.
+# For 32-bit Windows builds, default to the local Win32 SDK install if present.
+if(WIN32 AND NOT DEFINED ENV{VULKAN_SDK} AND NOT DEFINED Vulkan_INCLUDE_DIR AND NOT DEFINED Vulkan_LIBRARY)
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4 AND EXISTS "C:/vulkan-sdk-1.4-win32")
+    set(ENV{VULKAN_SDK} "C:/vulkan-sdk-1.4-win32")
+    message(STATUS "Using default Win32 Vulkan SDK: $ENV{VULKAN_SDK}")
+  elseif(EXISTS "C:/VulkanSDK")
+    # Leave discovery to find_package(Vulkan) for common 64-bit installs.
+  endif()
+endif()
+
 find_package(Vulkan REQUIRED)
 
 # Paths
